@@ -4,6 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from bioio import BioImage
 from scipy import ndimage
 from scipy.ndimage import label, binary_fill_holes
@@ -260,32 +261,29 @@ def main():
         print("\nSummary by condition:")
         print(summary_df[["condition", "num_images", "num_nuclei"]])
 
-        # Create a simple visualization
+        # Create a simple visualization: per-nucleus mean intensity by condition,
+        # shown as a boxplot with individual nuclei overlaid as a swarm plot
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
 
-        # Plot mean intensities by condition for each channel
         channels = ["DAPI", "HA", "CPSF6", "Capsid"]
-        conditions = results_df["condition"].unique()
+        condition_order = sorted(results_df["condition"].unique())
 
         for idx, channel in enumerate(channels):
             ax = axes[idx // 2, idx % 2]
+            col = f"{channel}_mean"
 
-            means = []
-            stds = []
-            labels = []
-
-            for condition in sorted(conditions):
-                cond_data = results_df[results_df["condition"] == condition]
-                mean_val = cond_data[f"{channel}_mean"].mean()
-                std_val = cond_data[f"{channel}_mean"].std()
-                means.append(mean_val)
-                stds.append(std_val)
-                labels.append(condition)
-
-            ax.bar(labels, means, yerr=stds, capsize=5, alpha=0.7)
+            sns.boxplot(
+                data=results_df, x="condition", y=col, order=condition_order,
+                ax=ax, showfliers=False, color="lightgray",
+            )
+            sns.swarmplot(
+                data=results_df, x="condition", y=col, order=condition_order,
+                ax=ax, size=2, color="black", alpha=0.6,
+            )
             ax.set_title(channel)
-            ax.set_ylabel("Mean intensity")
+            ax.set_xlabel("")
+            ax.set_ylabel("Mean intensity per nucleus")
             ax.tick_params(axis="x", rotation=30)
 
         fig.tight_layout()
