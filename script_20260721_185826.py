@@ -261,7 +261,7 @@ def main():
             )
             sns.swarmplot(
                 data=results_df, x="condition", y=col, order=condition_order,
-                ax=ax, size=2, color="black", alpha=0.6,
+                ax=ax, size=1, color="black", alpha=0.6,
             )
             ax.set_title(channel)
             ax.set_xlabel("")
