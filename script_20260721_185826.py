@@ -274,4 +274,17 @@ def main():
                 stds.append(std_val)
                 labels.append(condition)
             
-            ax.bar(labels, means, yerr=stds, capsize=5, alpha
+            ax.bar(labels, means, yerr=stds, capsize=5, alpha=0.7)
+            ax.set_title(channel)
+            ax.set_ylabel("Mean intensity")
+            ax.tick_params(axis="x", rotation=30)
+
+        fig.tight_layout()
+        plot_file = os.path.join(OUTPUT_DIR, "intensity_summary.png")
+        fig.savefig(plot_file, dpi=150)
+        plt.close(fig)
+        print(f"Saved summary plot to: {plot_file}")
+
+
+if __name__ == "__main__":
+    main()
