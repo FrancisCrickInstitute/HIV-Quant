@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -21,6 +22,12 @@ CAPSID_CHANNEL = 3
 NUCLEI_DIAMETER_PX = 140
 SIZE_TOLERANCE = 0.3
 LABEL_IMAGE_DIR = "./output/label_images"
+CHANNELS = [
+    ("DAPI", DAPI_CHANNEL),
+    ("HA", HA_CHANNEL),
+    ("CPSF6", CPSF6_CHANNEL),
+    ("Capsid", CAPSID_CHANNEL),
+]
 
 # Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -35,18 +42,12 @@ CONDITION_MAPPING = {
 
 def get_condition_from_filename(filename):
     """Extract image index from filename and return condition."""
-    try:
-        # Filenames are formatted like "10_Multichannel Z-Stack_20260622_67.vsi",
-        # where the leading number is the file index used in CONDITION_MAPPING.
-        base = Path(filename).stem
-        import re
-        numbers = re.findall(r'\d+', base)
-        if numbers:
-            idx = int(numbers[0])
-            return CONDITION_MAPPING.get(idx, "Unknown")
-    except:
-        pass
-    return "Unknown"
+    # Filenames are formatted like "10_Multichannel Z-Stack_20260622_67.vsi",
+    # where the leading number is the file index used in CONDITION_MAPPING.
+    numbers = re.findall(r"\d+", Path(filename).stem)
+    if not numbers:
+        return "Unknown"
+    return CONDITION_MAPPING.get(int(numbers[0]), "Unknown")
 
 
 def segment_nuclei_3d(dapi_stack):
@@ -130,28 +131,18 @@ def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id):
 
     metrics = {"nucleus_id": nucleus_id}
 
-    channel_names = ["DAPI", "HA", "CPSF6", "Capsid"]
-
-    # Extract metrics for each channel
-    for ch_idx, ch_name in enumerate(channel_names):
-        if ch_idx < image_data.shape[0]:
-            channel_data = image_data[ch_idx]
-            nucleus_intensities = channel_data[nucleus_mask]
-
-            if len(nucleus_intensities) > 0:
-                metrics[f"{ch_name}_mean"] = np.mean(nucleus_intensities)
-                metrics[f"{ch_name}_median"] = np.median(nucleus_intensities)
-                metrics[f"{ch_name}_min"] = np.min(nucleus_intensities)
-                metrics[f"{ch_name}_max"] = np.max(nucleus_intensities)
-                metrics[f"{ch_name}_std"] = np.std(nucleus_intensities)
-                metrics[f"{ch_name}_total"] = np.sum(nucleus_intensities)
-            else:
-                metrics[f"{ch_name}_mean"] = 0
-                metrics[f"{ch_name}_median"] = 0
-                metrics[f"{ch_name}_min"] = 0
-                metrics[f"{ch_name}_max"] = 0
-                metrics[f"{ch_name}_std"] = 0
-                metrics[f"{ch_name}_total"] = 0
+    # Extract metrics for each channel. nucleus_mask is guaranteed non-empty:
+    # segment_nuclei_3d only assigns labels to regions that passed its size filter.
+    for ch_name, ch_idx in CHANNELS:
+        if ch_idx >= image_data.shape[0]:
+            continue
+        nucleus_intensities = image_data[ch_idx][nucleus_mask]
+        metrics[f"{ch_name}_mean"] = np.mean(nucleus_intensities)
+        metrics[f"{ch_name}_median"] = np.median(nucleus_intensities)
+        metrics[f"{ch_name}_min"] = np.min(nucleus_intensities)
+        metrics[f"{ch_name}_max"] = np.max(nucleus_intensities)
+        metrics[f"{ch_name}_std"] = np.std(nucleus_intensities)
+        metrics[f"{ch_name}_total"] = np.sum(nucleus_intensities)
 
     return metrics
 
@@ -266,10 +257,9 @@ def main():
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
 
-        channels = ["DAPI", "HA", "CPSF6", "Capsid"]
         condition_order = sorted(results_df["condition"].unique())
 
-        for idx, channel in enumerate(channels):
+        for idx, (channel, _) in enumerate(CHANNELS):
             ax = axes[idx // 2, idx % 2]
             col = f"{channel}_mean"
 
