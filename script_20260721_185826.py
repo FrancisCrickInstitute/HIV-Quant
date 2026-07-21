@@ -146,29 +146,11 @@ def process_vsi_file(filepath):
     print(f"Processing: {filepath}")
     
     try:
-        # Read image using bioio
+        # Read image using bioio, collapsing the timepoint axis to get (C, Z, Y, X)
         bio_image = BioImage(filepath)
-        image_data = bio_image.data
-        
-        # Handle different possible data shapes
-        # Expected: (channels, z, y, x) or similar
-        if image_data.ndim == 4:
-            # Assuming format is (C, Z, Y, X)
-            dapi_stack = image_data[DAPI_CHANNEL]
-        elif image_data.ndim == 3:
-            # If no channel dimension, assume single channel
-            dapi_stack = image_data
-        else:
-            print(f"Unexpected image shape: {image_data.shape}")
-            return None
-        
-        # Ensure we have proper 3D data
-        if dapi_stack.ndim == 3:
-            # 3D z-stack
-            z_projection = np.max(dapi_stack, axis=0)
-        else:
-            z_projection = dapi_stack
-        
+        image_data = bio_image.get_image_data("CZYX", T=0)
+        dapi_stack = image_data[DAPI_CHANNEL]
+
         # Segment nuclei in 3D
         labeled_nuclei = segment_nuclei_3d(dapi_stack)
         num_nuclei = np.max(labeled_nuclei)
