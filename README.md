@@ -1,8 +1,10 @@
 # HIV-Quant
 
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-green.svg)](https://www.python.org/downloads/)
 [![Managed by Pixi](https://img.shields.io/badge/managed%20by-pixi-yellow.svg)](https://pixi.sh)
 [![Platforms](https://img.shields.io/badge/platforms-linux--64%20%7C%20win--64-lightgrey.svg)](https://pixi.sh)
+![Commit activity](https://img.shields.io/github/commit-activity/y/FrancisCrickInstitute/HIV-Quant?style=plastic)
 
 Bioimage analysis pipeline for quantifying HIV capsid/CPSF6/HA intensity in cell nuclei from multi-channel
 confocal z-stacks (`.vsi` files). Nuclei are segmented in 3D from a DAPI channel, then per-nucleus intensity
