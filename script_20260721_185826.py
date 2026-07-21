@@ -34,13 +34,13 @@ CONDITION_MAPPING = {
 def get_condition_from_filename(filename):
     """Extract image index from filename and return condition."""
     try:
-        # Extract number from filename (assuming format like "image_7.vsi" or similar)
+        # Filenames are formatted like "10_Multichannel Z-Stack_20260622_67.vsi",
+        # where the leading number is the file index used in CONDITION_MAPPING.
         base = Path(filename).stem
-        # Try to find a number in the filename
         import re
         numbers = re.findall(r'\d+', base)
         if numbers:
-            idx = int(numbers[-1])
+            idx = int(numbers[0])
             return CONDITION_MAPPING.get(idx, "Unknown")
     except:
         pass
