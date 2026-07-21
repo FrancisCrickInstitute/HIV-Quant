@@ -185,6 +185,73 @@ def process_vsi_file(filepath):
         return None
 
 
+def summarize_by_condition(results_df):
+    """
+    Compute per-condition summary statistics (mean/std of each intensity metric).
+
+    Parameters:
+    results_df: per-nucleus measurements DataFrame from process_vsi_file
+
+    Returns:
+    pandas DataFrame with one row per condition
+    """
+    summary_stats = []
+
+    for condition in results_df["condition"].unique():
+        condition_data = results_df[results_df["condition"] == condition]
+
+        summary = {
+            "condition": condition,
+            "num_images": condition_data["filename"].nunique(),
+            "num_nuclei": len(condition_data),
+        }
+
+        # Add mean values for each channel metric
+        for col in condition_data.columns:
+            if col not in ["nucleus_id", "filename", "condition"]:
+                summary[f"{col}_mean"] = condition_data[col].mean()
+                summary[f"{col}_std"] = condition_data[col].std()
+
+        summary_stats.append(summary)
+
+    return pd.DataFrame(summary_stats)
+
+
+def plot_intensity_summary(results_df, plot_file):
+    """
+    Save a per-channel boxplot with individual nuclei overlaid as a swarm plot.
+
+    Parameters:
+    results_df: per-nucleus measurements DataFrame from process_vsi_file
+    plot_file: path to save the PNG to
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
+
+    condition_order = sorted(results_df["condition"].unique())
+
+    for idx, (channel, _) in enumerate(CHANNELS):
+        ax = axes[idx // 2, idx % 2]
+        col = f"{channel}_mean"
+
+        sns.boxplot(
+            data=results_df, x="condition", y=col, order=condition_order,
+            ax=ax, showfliers=False, color="lightgray",
+        )
+        sns.swarmplot(
+            data=results_df, x="condition", y=col, order=condition_order,
+            ax=ax, size=1, color="black", alpha=0.6,
+        )
+        ax.set_title(channel)
+        ax.set_xlabel("")
+        ax.set_ylabel("Mean intensity per nucleus")
+        ax.tick_params(axis="x", rotation=30)
+
+    fig.tight_layout()
+    fig.savefig(plot_file, dpi=150)
+    plt.close(fig)
+
+
 def main():
     """Main analysis pipeline."""
 
@@ -205,74 +272,30 @@ def main():
         if df is not None and len(df) > 0:
             all_measurements.append(df)
 
-    # Combine all measurements
-    if all_measurements:
-        results_df = pd.concat(all_measurements, ignore_index=True)
+    if not all_measurements:
+        return
 
-        # Save full results
-        output_file = os.path.join(OUTPUT_DIR, "nuclei_measurements.csv")
-        results_df.to_csv(output_file, index=False)
-        print(f"\nSaved full measurements to: {output_file}")
-        print(f"Total nuclei measured: {len(results_df)}")
+    results_df = pd.concat(all_measurements, ignore_index=True)
 
-        # Generate summary statistics by condition
-        summary_stats = []
+    # Save full results
+    output_file = os.path.join(OUTPUT_DIR, "nuclei_measurements.csv")
+    results_df.to_csv(output_file, index=False)
+    print(f"\nSaved full measurements to: {output_file}")
+    print(f"Total nuclei measured: {len(results_df)}")
 
-        for condition in results_df["condition"].unique():
-            condition_data = results_df[results_df["condition"] == condition]
+    # Save summary statistics by condition
+    summary_df = summarize_by_condition(results_df)
+    summary_file = os.path.join(OUTPUT_DIR, "summary_statistics.csv")
+    summary_df.to_csv(summary_file, index=False)
+    print(f"Saved summary statistics to: {summary_file}")
 
-            summary = {
-                "condition": condition,
-                "num_images": condition_data["filename"].nunique(),
-                "num_nuclei": len(condition_data),
-            }
+    print("\nSummary by condition:")
+    print(summary_df[["condition", "num_images", "num_nuclei"]])
 
-            # Add mean values for each channel metric
-            for col in condition_data.columns:
-                if col not in ["nucleus_id", "filename", "condition"]:
-                    summary[f"{col}_mean"] = condition_data[col].mean()
-                    summary[f"{col}_std"] = condition_data[col].std()
-
-            summary_stats.append(summary)
-
-        summary_df = pd.DataFrame(summary_stats)
-        summary_file = os.path.join(OUTPUT_DIR, "summary_statistics.csv")
-        summary_df.to_csv(summary_file, index=False)
-        print(f"Saved summary statistics to: {summary_file}")
-
-        # Display summary
-        print("\nSummary by condition:")
-        print(summary_df[["condition", "num_images", "num_nuclei"]])
-
-        # Create a simple visualization: per-nucleus mean intensity by condition,
-        # shown as a boxplot with individual nuclei overlaid as a swarm plot
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
-
-        condition_order = sorted(results_df["condition"].unique())
-
-        for idx, (channel, _) in enumerate(CHANNELS):
-            ax = axes[idx // 2, idx % 2]
-            col = f"{channel}_mean"
-
-            sns.boxplot(
-                data=results_df, x="condition", y=col, order=condition_order,
-                ax=ax, showfliers=False, color="lightgray",
-            )
-            sns.swarmplot(
-                data=results_df, x="condition", y=col, order=condition_order,
-                ax=ax, size=1, color="black", alpha=0.6,
-            )
-            ax.set_title(channel)
-            ax.set_xlabel("")
-            ax.set_ylabel("Mean intensity per nucleus")
-            ax.tick_params(axis="x", rotation=30)
-
-        fig.tight_layout()
-        plot_file = os.path.join(OUTPUT_DIR, "intensity_summary.png")
-        fig.savefig(plot_file, dpi=150)
-        plt.close(fig)
-        print(f"Saved summary plot to: {plot_file}")
+    # Save per-channel boxplot + swarm plot visualization
+    plot_file = os.path.join(OUTPUT_DIR, "intensity_summary.png")
+    plot_intensity_summary(results_df, plot_file)
+    print(f"Saved summary plot to: {plot_file}")
 
 
 if __name__ == "__main__":
