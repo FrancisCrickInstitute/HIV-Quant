@@ -1,3 +1,4 @@
+import argparse
 import os
 import re
 from pathlib import Path
@@ -252,14 +253,14 @@ def plot_intensity_summary(results_df, plot_file):
     plt.close(fig)
 
 
-def main():
+def main(data_dir):
     """Main analysis pipeline."""
 
     # Find all VSI files in data directory
-    vsi_files = list(Path(DATA_DIR).glob("*.vsi"))
+    vsi_files = list(Path(data_dir).glob("*.vsi"))
 
     if not vsi_files:
-        print(f"No VSI files found in {DATA_DIR}")
+        print(f"No VSI files found in {data_dir}")
         return
 
     print(f"Found {len(vsi_files)} VSI files")
@@ -298,5 +299,17 @@ def main():
     print(f"Saved summary plot to: {plot_file}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Segment nuclei and quantify per-channel intensity from VSI z-stacks."
+    )
+    parser.add_argument(
+        "--data-dir", default=DATA_DIR,
+        help=f"Directory containing .vsi files (default: {DATA_DIR})",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args.data_dir)
