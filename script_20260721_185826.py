@@ -1,14 +1,14 @@
 import os
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pathlib import Path
+from bioio import BioImage
 from scipy import ndimage
 from scipy.ndimage import label, binary_fill_holes
-from bioio import BioImage
-import matplotlib.pyplot as plt
 from skimage import filters, morphology
 from skimage.color import label2rgb
-from skimage.segmentation import watershed
 
 # Configuration
 DATA_DIR = "./data"
@@ -31,6 +31,7 @@ CONDITION_MAPPING = {
     17: "Uninfected", 18: "Uninfected", 19: "Uninfected", 20: "Uninfected", 21: "Uninfected"
 }
 
+
 def get_condition_from_filename(filename):
     """Extract image index from filename and return condition."""
     try:
@@ -46,6 +47,7 @@ def get_condition_from_filename(filename):
         pass
     return "Unknown"
 
+
 def segment_nuclei_3d(dapi_stack):
     """
     Segment nuclei from 3D DAPI z-stack.
@@ -56,42 +58,39 @@ def segment_nuclei_3d(dapi_stack):
     Returns:
     labeled_3d: 3D labeled image with nucleus IDs
     """
-    # Normalize intensity to 0-1 range
-    dapi_min = np.percentile(dapi_stack, 1)
-    dapi_max = np.percentile(dapi_stack, 99)
-    dapi_normalized = np.clip((dapi_stack - dapi_min) / (dapi_max - dapi_min), 0, 1)
-    
+
     # Apply Gaussian smoothing to reduce noise
-    dapi_smooth = ndimage.gaussian_filter(dapi_normalized, sigma=1.5)
-    
-    # Create initial binary mask using Otsu's threshold
-    threshold = filters.threshold_otsu(dapi_smooth)
+    dapi_smooth = ndimage.gaussian_filter(dapi_stack, sigma=[1.0, 2.0, 2.0])
+
+    # Create initial binary mask using the triangle threshold
+    threshold = filters.threshold_triangle(dapi_smooth)
     binary_mask = dapi_smooth > threshold
-    
+
     # Fill holes in the binary mask
     binary_mask = binary_fill_holes(binary_mask)
-    
+
     # Apply morphological operations to clean up
     binary_mask = morphology.binary_erosion(binary_mask, morphology.ball(2))
     binary_mask = morphology.binary_dilation(binary_mask, morphology.ball(2))
-    
+
     # Label connected components in 3D
     labeled_3d, num_features = label(binary_mask)
-    
+
     # Filter by size: keep nuclei within acceptable size range
     min_size = int(np.pi * (NUCLEI_DIAMETER_PX * (1 - SIZE_TOLERANCE) / 2) ** 2 / 10)
     max_size = int(np.pi * (NUCLEI_DIAMETER_PX * (1 + SIZE_TOLERANCE) / 2) ** 2 * 10)
-    
+
     filtered_labeled = np.zeros_like(labeled_3d)
     new_label = 0
-    
+
     for nucleus_id in range(1, num_features + 1):
         nucleus_voxels = np.sum(labeled_3d == nucleus_id)
         if min_size <= nucleus_voxels <= max_size:
             new_label += 1
             filtered_labeled[labeled_3d == nucleus_id] = new_label
-    
+
     return filtered_labeled
+
 
 def save_label_images(dapi_stack, labeled_nuclei, output_subdir):
     """
@@ -112,6 +111,7 @@ def save_label_images(dapi_stack, labeled_nuclei, output_subdir):
         overlay = label2rgb(labeled_nuclei[z], image=dapi_normalized[z], bg_label=0, alpha=0.4)
         plt.imsave(os.path.join(output_subdir, f"z{z:03d}.png"), overlay)
 
+
 def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id):
     """
     Extract intensity metrics for a single nucleus across all channels.
@@ -126,17 +126,17 @@ def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id):
     """
     # Get voxels belonging to this nucleus
     nucleus_mask = labeled_nuclei == nucleus_id
-    
+
     metrics = {"nucleus_id": nucleus_id}
-    
+
     channel_names = ["DAPI", "HA", "CPSF6", "Capsid"]
-    
+
     # Extract metrics for each channel
     for ch_idx, ch_name in enumerate(channel_names):
         if ch_idx < image_data.shape[0]:
             channel_data = image_data[ch_idx]
             nucleus_intensities = channel_data[nucleus_mask]
-            
+
             if len(nucleus_intensities) > 0:
                 metrics[f"{ch_name}_mean"] = np.mean(nucleus_intensities)
                 metrics[f"{ch_name}_median"] = np.median(nucleus_intensities)
@@ -151,8 +151,9 @@ def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id):
                 metrics[f"{ch_name}_max"] = 0
                 metrics[f"{ch_name}_std"] = 0
                 metrics[f"{ch_name}_total"] = 0
-    
+
     return metrics
+
 
 def process_vsi_file(filepath):
     """
@@ -165,7 +166,7 @@ def process_vsi_file(filepath):
     pandas DataFrame with per-nucleus measurements
     """
     print(f"Processing: {filepath}")
-    
+
     try:
         # Read image using bioio, collapsing the timepoint axis to get (C, Z, Y, X)
         bio_image = BioImage(filepath)
@@ -186,93 +187,94 @@ def process_vsi_file(filepath):
         # Extract metrics for each nucleus
         measurements = []
         condition = get_condition_from_filename(filename)
-        
+
         for nucleus_id in range(1, int(num_nuclei) + 1):
             metrics = extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id)
             metrics["filename"] = filename
             metrics["condition"] = condition
             measurements.append(metrics)
-        
+
         return pd.DataFrame(measurements)
-    
+
     except Exception as e:
         print(f"  Error processing {filepath}: {e}")
         return None
 
+
 def main():
     """Main analysis pipeline."""
-    
+
     # Find all VSI files in data directory
     vsi_files = list(Path(DATA_DIR).glob("*.vsi"))
-    
+
     if not vsi_files:
         print(f"No VSI files found in {DATA_DIR}")
         return
-    
+
     print(f"Found {len(vsi_files)} VSI files")
-    
+
     # Process each file and collect results
     all_measurements = []
-    
+
     for vsi_file in sorted(vsi_files):
         df = process_vsi_file(str(vsi_file))
         if df is not None and len(df) > 0:
             all_measurements.append(df)
-    
+
     # Combine all measurements
     if all_measurements:
         results_df = pd.concat(all_measurements, ignore_index=True)
-        
+
         # Save full results
         output_file = os.path.join(OUTPUT_DIR, "nuclei_measurements.csv")
         results_df.to_csv(output_file, index=False)
         print(f"\nSaved full measurements to: {output_file}")
         print(f"Total nuclei measured: {len(results_df)}")
-        
+
         # Generate summary statistics by condition
         summary_stats = []
-        
+
         for condition in results_df["condition"].unique():
             condition_data = results_df[results_df["condition"] == condition]
-            
+
             summary = {
                 "condition": condition,
                 "num_images": condition_data["filename"].nunique(),
                 "num_nuclei": len(condition_data),
             }
-            
+
             # Add mean values for each channel metric
             for col in condition_data.columns:
                 if col not in ["nucleus_id", "filename", "condition"]:
                     summary[f"{col}_mean"] = condition_data[col].mean()
                     summary[f"{col}_std"] = condition_data[col].std()
-            
+
             summary_stats.append(summary)
-        
+
         summary_df = pd.DataFrame(summary_stats)
         summary_file = os.path.join(OUTPUT_DIR, "summary_statistics.csv")
         summary_df.to_csv(summary_file, index=False)
         print(f"Saved summary statistics to: {summary_file}")
-        
+
         # Display summary
         print("\nSummary by condition:")
         print(summary_df[["condition", "num_images", "num_nuclei"]])
-        
+
         # Create a simple visualization
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
-        
+
         # Plot mean intensities by condition for each channel
         channels = ["DAPI", "HA", "CPSF6", "Capsid"]
         conditions = results_df["condition"].unique()
-        
+
         for idx, channel in enumerate(channels):
             ax = axes[idx // 2, idx % 2]
-            
+
             means = []
             stds = []
             labels = []
-            
+
             for condition in sorted(conditions):
                 cond_data = results_df[results_df["condition"] == condition]
                 mean_val = cond_data[f"{channel}_mean"].mean()
@@ -280,7 +282,7 @@ def main():
                 means.append(mean_val)
                 stds.append(std_val)
                 labels.append(condition)
-            
+
             ax.bar(labels, means, yerr=stds, capsize=5, alpha=0.7)
             ax.set_title(channel)
             ax.set_ylabel("Mean intensity")
