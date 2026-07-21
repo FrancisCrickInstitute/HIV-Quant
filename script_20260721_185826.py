@@ -82,16 +82,16 @@ def segment_nuclei_3d(dapi_stack):
     min_size = int(np.pi * (NUCLEI_DIAMETER_PX * (1 - SIZE_TOLERANCE) / 2) ** 2 / 10)
     max_size = int(np.pi * (NUCLEI_DIAMETER_PX * (1 + SIZE_TOLERANCE) / 2) ** 2 * 10)
 
-    filtered_labeled = np.zeros_like(labeled_3d)
-    new_label = 0
+    # Voxel count per label, then relabel sequentially in one pass rather than
+    # rescanning the full volume once per candidate nucleus.
+    voxel_counts = np.bincount(labeled_3d.ravel(), minlength=num_features + 1)
+    keep = (voxel_counts >= min_size) & (voxel_counts <= max_size)
+    keep[0] = False  # background is never a nucleus
 
-    for nucleus_id in range(1, num_features + 1):
-        nucleus_voxels = np.sum(labeled_3d == nucleus_id)
-        if min_size <= nucleus_voxels <= max_size:
-            new_label += 1
-            filtered_labeled[labeled_3d == nucleus_id] = new_label
+    new_labels = np.zeros(num_features + 1, dtype=labeled_3d.dtype)
+    new_labels[keep] = np.arange(1, keep.sum() + 1)
 
-    return filtered_labeled
+    return new_labels[labeled_3d]
 
 
 def save_label_images(dapi_stack, labeled_nuclei, output_subdir):
@@ -114,37 +114,34 @@ def save_label_images(dapi_stack, labeled_nuclei, output_subdir):
         plt.imsave(os.path.join(output_subdir, f"z{z:03d}.png"), overlay)
 
 
-def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id):
+def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_ids):
     """
-    Extract intensity metrics for a single nucleus across all channels.
-    
+    Extract intensity metrics for every nucleus across all channels in one pass.
+
     Parameters:
     image_data: 4D array (channels, z, y, x)
     labeled_nuclei: 3D labeled image
-    nucleus_id: ID of nucleus to measure
-    
+    nucleus_ids: array-like of nucleus label IDs to measure
+
     Returns:
-    Dictionary with intensity metrics for all channels
+    pandas DataFrame with one row per nucleus and per-channel intensity metrics
     """
-    # Get voxels belonging to this nucleus
-    nucleus_mask = labeled_nuclei == nucleus_id
+    metrics = {"nucleus_id": np.asarray(nucleus_ids)}
 
-    metrics = {"nucleus_id": nucleus_id}
-
-    # Extract metrics for each channel. nucleus_mask is guaranteed non-empty:
-    # segment_nuclei_3d only assigns labels to regions that passed its size filter.
+    # Compute each stat for all nuclei at once with scipy.ndimage, rather than
+    # rescanning the full volume per nucleus per channel.
     for ch_name, ch_idx in CHANNELS:
         if ch_idx >= image_data.shape[0]:
             continue
-        nucleus_intensities = image_data[ch_idx][nucleus_mask]
-        metrics[f"{ch_name}_mean"] = np.mean(nucleus_intensities)
-        metrics[f"{ch_name}_median"] = np.median(nucleus_intensities)
-        metrics[f"{ch_name}_min"] = np.min(nucleus_intensities)
-        metrics[f"{ch_name}_max"] = np.max(nucleus_intensities)
-        metrics[f"{ch_name}_std"] = np.std(nucleus_intensities)
-        metrics[f"{ch_name}_total"] = np.sum(nucleus_intensities)
+        channel_data = image_data[ch_idx]
+        metrics[f"{ch_name}_mean"] = ndimage.mean(channel_data, labeled_nuclei, nucleus_ids)
+        metrics[f"{ch_name}_median"] = ndimage.median(channel_data, labeled_nuclei, nucleus_ids)
+        metrics[f"{ch_name}_min"] = ndimage.minimum(channel_data, labeled_nuclei, nucleus_ids)
+        metrics[f"{ch_name}_max"] = ndimage.maximum(channel_data, labeled_nuclei, nucleus_ids)
+        metrics[f"{ch_name}_std"] = ndimage.standard_deviation(channel_data, labeled_nuclei, nucleus_ids)
+        metrics[f"{ch_name}_total"] = ndimage.sum_labels(channel_data, labeled_nuclei, nucleus_ids)
 
-    return metrics
+    return pd.DataFrame(metrics)
 
 
 def process_vsi_file(filepath):
@@ -167,7 +164,7 @@ def process_vsi_file(filepath):
 
         # Segment nuclei in 3D
         labeled_nuclei = segment_nuclei_3d(dapi_stack)
-        num_nuclei = np.max(labeled_nuclei)
+        num_nuclei = int(labeled_nuclei.max())
 
         print(f"  Found {num_nuclei} nuclei")
 
@@ -176,17 +173,12 @@ def process_vsi_file(filepath):
         label_image_dir = os.path.join(LABEL_IMAGE_DIR, Path(filepath).stem)
         save_label_images(dapi_stack, labeled_nuclei, label_image_dir)
 
-        # Extract metrics for each nucleus
-        measurements = []
-        condition = get_condition_from_filename(filename)
+        # Extract metrics for all nuclei at once
+        measurements = extract_intensity_metrics(image_data, labeled_nuclei, np.arange(1, num_nuclei + 1))
+        measurements["filename"] = filename
+        measurements["condition"] = get_condition_from_filename(filename)
 
-        for nucleus_id in range(1, int(num_nuclei) + 1):
-            metrics = extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id)
-            metrics["filename"] = filename
-            metrics["condition"] = condition
-            measurements.append(metrics)
-
-        return pd.DataFrame(measurements)
+        return measurements
 
     except Exception as e:
         print(f"  Error processing {filepath}: {e}")
