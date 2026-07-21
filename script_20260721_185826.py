@@ -7,6 +7,7 @@ from scipy.ndimage import label, binary_fill_holes
 from bioio import BioImage
 import matplotlib.pyplot as plt
 from skimage import filters, morphology
+from skimage.color import label2rgb
 from skimage.segmentation import watershed
 
 # Configuration
@@ -18,6 +19,7 @@ CPSF6_CHANNEL = 2
 CAPSID_CHANNEL = 3
 NUCLEI_DIAMETER_PX = 140
 SIZE_TOLERANCE = 0.3
+LABEL_IMAGE_DIR = "./output/label_images"
 
 # Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -91,6 +93,25 @@ def segment_nuclei_3d(dapi_stack):
     
     return filtered_labeled
 
+def save_label_images(dapi_stack, labeled_nuclei, output_subdir):
+    """
+    Save one PNG per z-slice showing the DAPI signal with segmented nuclei overlaid.
+
+    Parameters:
+    dapi_stack: 3D numpy array (z, y, x) of raw DAPI intensities
+    labeled_nuclei: 3D labeled image with nucleus IDs, same shape as dapi_stack
+    output_subdir: directory to save the per-slice PNGs into (created if needed)
+    """
+    os.makedirs(output_subdir, exist_ok=True)
+
+    dapi_min = np.percentile(dapi_stack, 1)
+    dapi_max = np.percentile(dapi_stack, 99)
+    dapi_normalized = np.clip((dapi_stack - dapi_min) / (dapi_max - dapi_min), 0, 1)
+
+    for z in range(dapi_stack.shape[0]):
+        overlay = label2rgb(labeled_nuclei[z], image=dapi_normalized[z], bg_label=0, alpha=0.4)
+        plt.imsave(os.path.join(output_subdir, f"z{z:03d}.png"), overlay)
+
 def extract_intensity_metrics(image_data, labeled_nuclei, nucleus_id):
     """
     Extract intensity metrics for a single nucleus across all channels.
@@ -154,12 +175,16 @@ def process_vsi_file(filepath):
         # Segment nuclei in 3D
         labeled_nuclei = segment_nuclei_3d(dapi_stack)
         num_nuclei = np.max(labeled_nuclei)
-        
+
         print(f"  Found {num_nuclei} nuclei")
-        
+
+        # Save per-slice label images for visual inspection
+        filename = Path(filepath).name
+        label_image_dir = os.path.join(LABEL_IMAGE_DIR, Path(filepath).stem)
+        save_label_images(dapi_stack, labeled_nuclei, label_image_dir)
+
         # Extract metrics for each nucleus
         measurements = []
-        filename = Path(filepath).name
         condition = get_condition_from_filename(filename)
         
         for nucleus_id in range(1, int(num_nuclei) + 1):
