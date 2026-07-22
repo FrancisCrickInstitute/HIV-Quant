@@ -228,7 +228,7 @@ def summarize_by_condition(results_df):
 
 def plot_intensity_summary(results_df, plot_file, channels):
     """
-    Save a per-channel boxplot with individual nuclei overlaid as a swarm plot.
+    Save a per-channel boxplot with individual nuclei overlaid as a strip plot.
 
     Mean intensities are normalized to each nucleus's own DAPI mean intensity
     before plotting, and the y-axis is log-scaled, since raw intensities span
@@ -262,9 +262,9 @@ def plot_intensity_summary(results_df, plot_file, channels):
             data=plot_df, x="condition", y=col, order=condition_order,
             ax=ax, showfliers=False, color="lightgray",
         )
-        sns.swarmplot(
+        sns.stripplot(
             data=plot_df, x="condition", y=col, order=condition_order,
-            ax=ax, size=0.5, color="black", alpha=0.6,
+            ax=ax, size=1.0, color="black", alpha=0.6, jitter=True,
         )
         ax.set_yscale("log")
         ax.set_title(channel)
