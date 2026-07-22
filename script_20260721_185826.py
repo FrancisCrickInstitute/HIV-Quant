@@ -222,30 +222,39 @@ def plot_intensity_summary(results_df, plot_file):
     """
     Save a per-channel boxplot with individual nuclei overlaid as a swarm plot.
 
+    Mean intensities are normalized to each nucleus's own DAPI mean intensity
+    before plotting, and the y-axis is log-scaled, since raw intensities span
+    a wide range across channels/conditions.
+
     Parameters:
     results_df: per-nucleus measurements DataFrame from process_vsi_file
     plot_file: path to save the PNG to
     """
+    plot_df = results_df.copy()
+    for channel, _ in CHANNELS:
+        plot_df[f"{channel}_mean_norm"] = plot_df[f"{channel}_mean"] / plot_df["DAPI_mean"]
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
 
-    condition_order = sorted(results_df["condition"].unique())
+    condition_order = sorted(plot_df["condition"].unique())
 
     for idx, (channel, _) in enumerate(CHANNELS):
         ax = axes[idx // 2, idx % 2]
-        col = f"{channel}_mean"
+        col = f"{channel}_mean_norm"
 
         sns.boxplot(
-            data=results_df, x="condition", y=col, order=condition_order,
+            data=plot_df, x="condition", y=col, order=condition_order,
             ax=ax, showfliers=False, color="lightgray",
         )
         sns.swarmplot(
-            data=results_df, x="condition", y=col, order=condition_order,
+            data=plot_df, x="condition", y=col, order=condition_order,
             ax=ax, size=0.5, color="black", alpha=0.6,
         )
+        ax.set_yscale("log")
         ax.set_title(channel)
         ax.set_xlabel("")
-        ax.set_ylabel("Mean intensity per nucleus")
+        ax.set_ylabel("Mean intensity per nucleus\n(normalized to DAPI)")
         ax.tick_params(axis="x", rotation=30)
 
     fig.tight_layout()
