@@ -30,7 +30,7 @@ download a JRE via `cjdk` if one isn't already available.
 ## Usage
 
 ```
-pixi run python script_20260721_185826.py [OPTIONS]
+pixi run python quantify_nuclei_intensity.py [OPTIONS]
 ```
 
 Run with `--help` for the full option list. Available options (defaults match the original HIV experiment this
