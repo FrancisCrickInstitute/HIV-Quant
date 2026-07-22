@@ -241,7 +241,7 @@ def plot_intensity_summary(results_df, plot_file):
         )
         sns.swarmplot(
             data=results_df, x="condition", y=col, order=condition_order,
-            ax=ax, size=1, color="black", alpha=0.6,
+            ax=ax, size=0.5, color="black", alpha=0.6,
         )
         ax.set_title(channel)
         ax.set_xlabel("")
