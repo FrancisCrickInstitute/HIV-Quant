@@ -30,15 +30,23 @@ download a JRE via `cjdk` if one isn't already available.
 ## Usage
 
 ```
-pixi run python script_20260721_185826.py [--data-dir DATA_DIR]
+pixi run python script_20260721_185826.py [OPTIONS]
 ```
 
-`--data-dir` points at a folder of `.vsi` files and defaults to `./data`. Run with `--help` for the full option
-list.
+Run with `--help` for the full option list. Available options (defaults match the original HIV experiment this
+pipeline was built for):
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--data-dir` | `./data` | Directory containing `.vsi` files |
+| `--channel-names` | `DAPI HA CPSF6 Capsid` | Ordered list of channel names, one per channel index in the acquired image. Must include `DAPI`, which is used for nucleus segmentation |
+| `--nuclei-diameter-px` | `140` | Expected nucleus diameter in pixels, used to filter segmented objects by size |
+| `--size-tolerance` | `0.3` | Acceptable fractional deviation from `--nuclei-diameter-px` |
+| `--condition-mapping` | built-in HIV-Quant mapping | JSON object mapping the numeric file index parsed from each filename to an experimental condition label, e.g. `'{"1": "ConditionA", "2": "ConditionB"}'` |
 
 Filenames are expected in the form `<index>_Multichannel Z-Stack_<date>_<n>.vsi`, e.g.
-`10_Multichannel Z-Stack_20260622_67.vsi`. The leading index is looked up in `CONDITION_MAPPING` (in the script)
-to assign each image to an experimental condition.
+`10_Multichannel Z-Stack_20260622_67.vsi`. The leading index is looked up in `--condition-mapping` to assign each
+image to an experimental condition.
 
 ## Output
 
@@ -52,24 +60,23 @@ Results are written to `./output/`:
 
 ## Configuration
 
-The following are set as constants near the top of the script and should be adjusted per experiment:
-
-- `DAPI_CHANNEL`, `HA_CHANNEL`, `CPSF6_CHANNEL`, `CAPSID_CHANNEL` — channel indices in the acquired image
-- `NUCLEI_DIAMETER_PX`, `SIZE_TOLERANCE` — expected nucleus diameter (px) and acceptable size deviation, used to
-  filter segmented objects
-- `CONDITION_MAPPING` — maps the numeric file index parsed from each filename to an experimental condition label
+Channel names/order, expected nucleus size, and the condition mapping are all CLI options — see the table in
+[Usage](#usage) — so no source changes are needed to point the pipeline at a different experiment. The
+filename-parsing convention in `get_condition_from_filename` is still fixed in the script; see below if that needs
+to change too.
 
 ## Adapting to other experiments
 
-Nothing about the segmentation or measurement code is specific to HIV, capsid, CPSF6, or HA — those only appear as
-labels in `CHANNELS` and the `*_CHANNEL` constants. To reuse the pipeline for a different multi-channel experiment:
+Nothing about the segmentation or measurement code is specific to HIV, capsid, CPSF6, or HA — those are just the
+default `--channel-names`. To reuse the pipeline for a different multi-channel experiment:
 
-- Rename/retarget the entries in `CHANNELS` (and the corresponding `*_CHANNEL` constants) to match your stains and
-  their channel indices. Any number of channels is fine; nuclei are always segmented from `DAPI_CHANNEL`.
-- Adjust `NUCLEI_DIAMETER_PX`/`SIZE_TOLERANCE` to your expected nucleus size, or the thresholding/morphology steps
-  in `segment_nuclei_3d` if your nuclear stain behaves differently.
-- Update `CONDITION_MAPPING`/`get_condition_from_filename` to match your own filename convention and experimental
-  groups — or replace it entirely if conditions are tracked some other way.
+- Pass `--channel-names` with your own stain names in acquisition order (one per channel index), e.g.
+  `--channel-names DAPI GFP mCherry`. The name at each position becomes the column/plot label for that channel, and
+  whichever position is named `DAPI` (required) is used for nucleus segmentation. Any number of channels is fine.
+- Use `--nuclei-diameter-px`/`--size-tolerance` to match your expected nucleus size, or adjust the
+  thresholding/morphology steps in `segment_nuclei_3d` if your nuclear stain behaves differently.
+- Use `--condition-mapping` to match your own experimental groups, or edit `get_condition_from_filename` if
+  conditions aren't identified by a leading numeric index in the filename.
 
 Everything downstream (per-nucleus metrics, per-condition summary, plots, label image overlays) works off those
 config values and needs no further changes.
