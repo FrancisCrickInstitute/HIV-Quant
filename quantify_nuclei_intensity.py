@@ -232,7 +232,9 @@ def plot_intensity_summary(results_df, plot_file, channels):
 
     Mean intensities are normalized to each nucleus's own DAPI mean intensity
     before plotting, and the y-axis is log-scaled, since raw intensities span
-    a wide range across channels/conditions.
+    a wide range across channels/conditions. DAPI itself is excluded from the
+    plotted channels, since it's only used here as the normalization
+    reference (its own panel would just be a ~1.0 flat line).
 
     Parameters:
     results_df: per-nucleus measurements DataFrame from process_vsi_file
@@ -240,16 +242,20 @@ def plot_intensity_summary(results_df, plot_file, channels):
     channels: list of (channel_name, channel_index) pairs that were measured
     """
     plot_df = results_df.copy()
-    for channel, _ in channels:
+    plot_channels = [(name, idx) for name, idx in channels if name != "DAPI"]
+    for channel, _ in plot_channels:
         plot_df[f"{channel}_mean_norm"] = plot_df[f"{channel}_mean"] / plot_df["DAPI_mean"]
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    ncols = 2
+    nrows = int(np.ceil(len(plot_channels) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows), squeeze=False)
+    axes = axes.flatten()
     fig.suptitle("Nuclei Intensity Analysis Summary", fontsize=16)
 
     condition_order = sorted(plot_df["condition"].unique())
 
-    for idx, (channel, _) in enumerate(channels):
-        ax = axes[idx // 2, idx % 2]
+    for idx, (channel, _) in enumerate(plot_channels):
+        ax = axes[idx]
         col = f"{channel}_mean_norm"
 
         sns.boxplot(
@@ -265,6 +271,9 @@ def plot_intensity_summary(results_df, plot_file, channels):
         ax.set_xlabel("")
         ax.set_ylabel("Mean intensity per nucleus\n(normalized to DAPI)")
         ax.tick_params(axis="x", rotation=30)
+
+    for ax in axes[len(plot_channels):]:
+        ax.set_visible(False)
 
     fig.tight_layout()
     fig.savefig(plot_file, dpi=150)
