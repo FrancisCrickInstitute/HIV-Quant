@@ -63,10 +63,11 @@ their defaults) rather than hardcoded config, and are threaded through as functi
    images, extracts per-nucleus metrics, and tags the resulting `DataFrame` with `filename` and a `condition` from
    `get_condition_from_filename`.
 7. **Summary plot** (`plot_intensity_summary`): for each non-DAPI channel, normalizes its per-nucleus mean
-   intensity to that same nucleus's `DAPI_mean`, then renders a per-condition boxplot+swarmplot (seaborn) with a
+   intensity to that same nucleus's `DAPI_mean`, then renders a per-condition boxplot+stripplot (seaborn) with a
    log-scaled y-axis in a grid (2 columns, rows sized to the number of non-DAPI channels), since raw/normalized
    intensities span a wide range across channels and conditions. DAPI itself is excluded from the plotted panels —
-   it's only used as the normalization reference.
+   it's only used as the normalization reference. Stripplot (jittered) is used rather than swarmplot so that
+   dense conditions (hundreds of nuclei) never silently drop points that swarm's non-overlap layout can't fit.
 
 Image arrays are expected in `(channels, z, y, x)` order; channel-to-biology mapping is controlled entirely by
 `--channel-names` (position = channel index), and condition labeling is controlled entirely by
